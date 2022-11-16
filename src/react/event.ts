@@ -19,6 +19,7 @@ export function addEvent(
   // eventStore['onclick'] = listener
   eventStore[eventType] = listener;
   // 不管点什么dom 都冒泡给document  false 冒泡阶段处理
+  // TODO  绑定事件的时候可以想办法抹平差异
   document.addEventListener(eventType.slice(2) as any, dispatchEvent, false);
 }
 /**
@@ -32,11 +33,11 @@ function dispatchEvent(event: any) {
   // type = click  target = dom
   let { type, target } = event;
   const eventType = "on" + type;
-  syntheticEvent = getSyntheticEvent(event); // 合成事件
   // 模拟事件冒泡
   while (target) {
     // 取出存放的事件
     let { eventStore } = target as any;
+    syntheticEvent = getSyntheticEvent(event); // 合成事件
     // 看是否有事件监听函数
     const listener = eventStore?.[eventType];
     if (typeof listener === "function") {
@@ -46,7 +47,7 @@ function dispatchEvent(event: any) {
     }
     target = target?.parentNode;
   }
-  // 清空合成事件
+  // 清空合成事件 (同步才能拿到合成事件对象了，异步的被清空了)
   for (const key in syntheticEvent) {
     if (key !== "persist") syntheticEvent[key] = null;
   }
@@ -56,8 +57,7 @@ function dispatchEvent(event: any) {
  * @param nativeEvent
  */
 function getSyntheticEvent(nativeEvent: Event) {
-  if(!syntheticEvent)
-  syntheticEvent = new SyntheticEvent(nativeEvent);
+  if (!syntheticEvent) syntheticEvent = new SyntheticEvent(nativeEvent);
   for (const key in nativeEvent) {
     if (typeof nativeEvent[key] === "function") {
       syntheticEvent[key] = nativeEvent[key].bind(nativeEvent);
@@ -76,6 +76,10 @@ class SyntheticEvent {
    */
   persist() {
     // 创建一个新的合成事件 老的合成事件不在关心了
+    // syntheticEvent = Object.assign(
+    //   new SyntheticEvent(this.nativeEvent),
+    //   syntheticEvent
+    // );
     syntheticEvent = new SyntheticEvent(this.nativeEvent);
   }
 }
