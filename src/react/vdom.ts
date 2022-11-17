@@ -19,6 +19,38 @@ export function ReactElement($$typeof, type, key, ref, props): IReactElement {
   const element = { $$typeof, type, key, ref, props };
   return element;
 }
+/**
+ * dom diff
+ * @param oldVdom
+ * @param newVdom
+ * @returns
+ */
+export function compareTwoElements(oldRenderElement, newRenderElement) {
+  oldRenderElement = onlyOne(oldRenderElement);
+  newRenderElement = onlyOne(newRenderElement);
+  // 取出老的dom节点
+  let currentDOM: HTMLElement | null = oldRenderElement.dom;
+  // 比较后的渲染结果
+  let currentRenderElement = oldRenderElement;
+  if (newRenderElement == null) {
+    // 新的渲染结果是空 直接干掉老的dom节点
+    currentDOM?.parentNode?.removeChild(currentDOM);
+    currentDOM = null;
+    oldRenderElement.dom = null;
+  } else if (oldRenderElement.type !== newRenderElement.type) {
+    // 两次渲染的标签类型都不一样没办法复用dom元素 div -> span
+    const newDOM = createDOM(newRenderElement);
+    currentDOM?.parentNode?.replaceChild(newDOM, currentDOM);
+    oldRenderElement.dom = newDOM;
+  } else {
+    // TODO  新老节点都存在且类型一致  进行dom diff 深度比较 属性 + 子节点
+    const newDOM = createDOM(newRenderElement);
+    currentDOM?.parentNode?.replaceChild(newDOM, currentDOM);
+    currentRenderElement = newRenderElement;
+    currentRenderElement.dom = newDOM;
+  }
+  return currentRenderElement;
+}
 
 /**
  * 把虚拟dom转为真实dom
@@ -45,6 +77,7 @@ export function createDOM(element: IReactElement | IReactElement[]) {
     // 渲染函数组件
     dom = createFunctionComponentDOM(element);
   }
+  element.dom = dom; // 只要是react元素 都指向创建出来的真实dom元素
   return dom;
 }
 /**
@@ -55,9 +88,7 @@ function createClassComponentDOM(element: IReactElement) {
   // type就是这个类了
   const { type: Constructor, props } = element;
   // 创建组件实例
-  const componentInstance: Component & { renderElement: any } = new Constructor(
-    props
-  );
+  const componentInstance: Component = new Constructor(props);
   // 类组件的虚拟dom（也是react元素） 记录当前渲染的组件实例对象
   element.componentInstance = componentInstance;
   // 拿到渲染的react元素
@@ -79,7 +110,7 @@ function createFunctionComponentDOM(element: IReactElement) {
   const { type, props } = element;
   // 要渲染的react 元素
   const renderElement = type(props);
-  element.renderElement = renderElement
+  element.renderElement = renderElement;
   const newDom = createDOM(renderElement);
   // 虚拟dom（react元素） 记录对应的真实dom
   renderElement.dom = newDom;
@@ -128,6 +159,7 @@ interface IReactElement {
     children: IReactElement[];
   };
   content?: string; // react 文本节点
-  componentInstance?: Component & { renderElement: any }; // 类组件的实例
-  renderElement?: any // 函数式组件的渲染结果（虚拟dom react元素）
+  componentInstance?: Component; // 类组件的实例
+  renderElement?: any; // 函数式组件的渲染结果（虚拟dom react元素）
+  dom?: Node | null; // 只要是react元素 都指向创建出来的真实dom元素
 }

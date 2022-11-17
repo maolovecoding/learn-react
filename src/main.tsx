@@ -19,16 +19,34 @@ const onClick = (e) => { e.persist();console.log(e) };
 
 // console.log(element);
 
-class Counter<T = any> extends React.Component<T>{
-  constructor(props:T) {
+class Counter extends React.Component{
+  constructor(props) {
     super(props)
+    this.state = {
+      count: 1,
+      num: 2
+    }
   }
   render(){
     // return React.createElement("button", {}, "0")
-    return <button onClick={()=>{console.log(1)}}>0</button>
+    return <button onClick={()=>{
+      this.setState(state=>{
+        return {
+          count: state.count+1
+        }
+      })
+      setTimeout(()=>{
+        console.log(this.state)
+      })
+    }}>{this.state.count}</button>
   }
+  // shouldComponentUpdate(nextProps: any, nextState: any): boolean {
+    // return false
+  // }
 }
 
 const element = React.createElement(Counter)
 
 ReactDOM.render(element, document.getElementById('root') as HTMLElement);
+
+// ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(element)

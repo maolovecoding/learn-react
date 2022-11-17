@@ -1,3 +1,4 @@
+import { updateQueue } from "./Updater";
 /**
  * react 合成事件
  * 在react中 我们是把事件绑定在document 上 类似事件委托
@@ -33,6 +34,8 @@ function dispatchEvent(event: any) {
   // type = click  target = dom
   let { type, target } = event;
   const eventType = "on" + type;
+  // TODO 在事件监听函数执行前 先进入批量更新模式
+  updateQueue.isPending = true;
   // 模拟事件冒泡
   while (target) {
     // 取出存放的事件
@@ -51,6 +54,10 @@ function dispatchEvent(event: any) {
   for (const key in syntheticEvent) {
     if (key !== "persist") syntheticEvent[key] = null;
   }
+  // 事件函数执行完 关闭批量更新模式
+  updateQueue.isPending = false;
+  // 执行批量更新
+  updateQueue.batchUpdate()
 }
 /**
  * 创建合成事件对象 将原生事件对象拷贝一份
