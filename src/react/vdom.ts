@@ -1,5 +1,11 @@
-import { ELEMENT, TEXT } from "./constants";
-import { onlyOne, setProps } from "./utils";
+import { Component } from "./Component";
+import {
+  CLASS_COMPONENT,
+  ELEMENT,
+  FUNCTION_COMPONENT,
+  TEXT,
+} from "./constants";
+import { flatten, onlyOne, setProps } from "./utils";
 /**
  * 创建一个react元素
  * @param $$typeof
@@ -32,9 +38,54 @@ export function createDOM(element: IReactElement | IReactElement[]) {
   } else if ($$typeof === ELEMENT) {
     // react 元素 也就是原生的标签
     dom = createNativeDOM(element);
+  } else if ($$typeof === CLASS_COMPONENT) {
+    // 渲染类组件
+    dom = createClassComponentDOM(element);
+  } else if ($$typeof === FUNCTION_COMPONENT) {
+    // 渲染函数组件
+    dom = createFunctionComponentDOM(element);
   }
   return dom;
 }
+/**
+ *
+ * @param element 创建类组件对应的dom元素
+ */
+function createClassComponentDOM(element: IReactElement) {
+  // type就是这个类了
+  const { type: Constructor, props } = element;
+  // 创建组件实例
+  const componentInstance: Component & { renderElement: any } = new Constructor(
+    props
+  );
+  // 类组件的虚拟dom（也是react元素） 记录当前渲染的组件实例对象
+  element.componentInstance = componentInstance;
+  // 拿到渲染的react元素
+  const renderElement = componentInstance.render();
+  // 组件实例记录渲染的 虚拟dom（react元素）
+  componentInstance.renderElement = renderElement;
+  // 真实dom
+  const newDom = createDOM(renderElement);
+  // 虚拟dom（react元素） 记录对应的真实dom
+  renderElement.dom = newDom;
+  return newDom;
+}
+/**
+ *
+ * @param element 创建函数组件对应的dom元素
+ */
+function createFunctionComponentDOM(element: IReactElement) {
+  // type 就是一个函数
+  const { type, props } = element;
+  // 要渲染的react 元素
+  const renderElement = type(props);
+  element.renderElement = renderElement
+  const newDom = createDOM(renderElement);
+  // 虚拟dom（react元素） 记录对应的真实dom
+  renderElement.dom = newDom;
+  return newDom;
+}
+
 /**
  * 创建原生dom元素
  * @param element
@@ -45,9 +96,9 @@ function createNativeDOM(element: IReactElement) {
   // 1. 创建真实dom元素
   const dom = document.createElement(type);
   // 2. 处理子节点
-  createNativeDOMChildren(dom, element.props.children);
+  createDOMChildren(dom, element.props.children);
   // 3. 处理props
-  setProps(dom, props)
+  setProps(dom, props);
   return dom;
 }
 /**
@@ -55,15 +106,16 @@ function createNativeDOM(element: IReactElement) {
  * @param parent
  * @param children
  */
-function createNativeDOMChildren(
-  parent: HTMLElement,
-  children?: IReactElement[]
-) {
+function createDOMChildren(parent: HTMLElement, children?: IReactElement[]) {
   // 打平多维的孩子节点
-  children?.flat(Infinity).forEach((child) => {
-    const childDOM = createDOM(child)!;
-    parent.appendChild(childDOM);
-  });
+  children &&
+    flatten(children).forEach((child, index) => {
+      // child 是react元素 也就是虚拟dom
+      // TODO  _mountIndex 指向当前子节点再父节点中的索引
+      child._mountIndex = index;
+      const childDOM = createDOM(child)!;
+      parent.appendChild(childDOM);
+    });
 }
 
 interface IReactElement {
@@ -76,4 +128,6 @@ interface IReactElement {
     children: IReactElement[];
   };
   content?: string; // react 文本节点
+  componentInstance?: Component & { renderElement: any }; // 类组件的实例
+  renderElement?: any // 函数式组件的渲染结果（虚拟dom react元素）
 }

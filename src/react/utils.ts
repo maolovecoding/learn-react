@@ -34,3 +34,16 @@ function setProp(dom: HTMLElement, key, val) {
     dom.setAttribute(key, val);
   }
 }
+/**
+ * 拍平数组
+ * @param arr
+ * @returns
+ */
+export function flatten(arr: any[]) {
+  const res: any[] = [];
+  for (const item of arr) {
+    if (Array.isArray(item)) res.push(...flatten(item));
+    else res.push(item);
+  }
+  return res;
+}
