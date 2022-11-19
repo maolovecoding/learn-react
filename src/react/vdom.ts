@@ -3,9 +3,12 @@ import {
   CLASS_COMPONENT,
   ELEMENT,
   FUNCTION_COMPONENT,
+  INSERT,
+  MOVE,
+  REMOVE,
   TEXT,
 } from "./constants";
-import { flatten, onlyOne, setProps } from "./utils";
+import { flatten, onlyOne, setProps, patchProps } from "./utils";
 /**
  * 创建一个react元素
  * @param $$typeof
@@ -38,18 +41,274 @@ export function compareTwoElements(oldRenderElement, newRenderElement) {
     currentDOM = null;
     oldRenderElement.dom = null;
   } else if (oldRenderElement.type !== newRenderElement.type) {
+    debugger;
     // 两次渲染的标签类型都不一样没办法复用dom元素 div -> span
     const newDOM = createDOM(newRenderElement);
     currentDOM?.parentNode?.replaceChild(newDOM, currentDOM);
-    oldRenderElement.dom = newDOM;
+    newRenderElement.dom = newDOM;
+    currentRenderElement = newRenderElement;
   } else {
     // TODO  新老节点都存在且类型一致  进行dom diff 深度比较 属性 + 子节点
-    const newDOM = createDOM(newRenderElement);
-    currentDOM?.parentNode?.replaceChild(newDOM, currentDOM);
-    currentRenderElement = newRenderElement;
-    currentRenderElement.dom = newDOM;
+    updateElement(oldRenderElement, newRenderElement);
   }
   return currentRenderElement;
+}
+/**
+ * dom diff 比较更新
+ * @param oldElement react元素 老的
+ * @param newElement
+ */
+function updateElement(oldElement, newElement) {
+  // 复用dom
+  const currentDOM: HTMLElement = (newElement.dom = oldElement.dom);
+  // 文本节点
+  if (oldElement.$$typeof === TEXT && newElement.$$typeof === TEXT) {
+    // 文本内容不一致更新
+    if (oldElement.content !== newElement.content)
+      currentDOM.textContent = newElement.content;
+  } else if (oldElement.$$typeof === ELEMENT) {
+    // 元素类型  span div
+    // 更新dom属性 props
+    updateDOMProperties(currentDOM, oldElement.props, newElement.props);
+    // TODO 更新子节点
+    updateChildrenElements(
+      currentDOM,
+      oldElement.props.children,
+      newElement.props.children
+    );
+    // 更新 react组件实例的props
+    oldElement.props = newElement.props;
+  } else if (oldElement.$$typeof === FUNCTION_COMPONENT) {
+    // 函数式组件的更新
+    updateFunctionComponent(oldElement, newElement);
+  } else if (oldElement.$$typeof === CLASS_COMPONENT) {
+    // 更新类组件
+    updateClassComponent(oldElement, newElement);
+  }
+}
+/**
+ * 更新节点的深度
+ */
+let updateDepth = 0;
+/**
+ * 补丁包 记录那些节点需要删除 那些节点需要添加
+ */
+const diffQueue: any[] = [];
+/**
+ * 更新孩子节点
+ * @param oldChildren
+ * @param newChildren
+ */
+function updateChildrenElements(dom: HTMLElement, oldChildren, newChildren) {
+  updateDepth++;
+  // TODO diff 只是更新节点的属性和文本 不会处理节点的新增和删除
+  diff(dom, oldChildren, newChildren, diffQueue);
+  updateDepth--;
+  if (updateDepth === 0) {
+    // 整个更新结束 diff完成 回到最上层了
+    // TODO 把收集到的差异 补丁 传给patch 进行更新 对节点的新增和删除
+    patch(diffQueue);
+    diffQueue.length = 0;
+  }
+}
+/**
+ * 打补丁 删除节点 移动节点 新增节点
+ * @param diffQueue
+ */
+function patch(diffQueue) {
+  const deleteMap = {};
+  const deleteChildren: any[] = [];
+  for (let i = 0; i < diffQueue.length; i++) {
+    const difference = diffQueue[i];
+    if (difference.type === MOVE || difference.type === REMOVE) {
+      const fromIndex = difference.fromIndex;
+      // 拿到老的子节点
+      const oldChildDOM = difference.parentNode.children[fromIndex];
+      deleteMap[fromIndex] = oldChildDOM;
+      deleteChildren.push(oldChildDOM);
+    }
+  }
+  // 将移动的和需要删除的都从父节点中移除掉先
+  deleteChildren.forEach((childDOM) => {
+    childDOM.parentNode.removeChild(childDOM);
+  });
+  for (let i = 0; i < diffQueue.length; i++) {
+    const difference = diffQueue[i];
+    switch (difference.type) {
+      case INSERT:
+        insertChildAt(
+          difference.parentNode,
+          difference.dom,
+          difference.toIndex
+        );
+        break;
+      case MOVE:
+        insertChildAt(
+          difference.parentNode,
+          deleteMap[difference.fromIndex],
+          difference.toIndex
+        );
+        break;
+    }
+  }
+}
+/**
+ * 插入dom节点
+ * @param parentNode
+ * @param child
+ * @param index
+ */
+function insertChildAt(
+  parentNode: HTMLElement,
+  child: HTMLElement,
+  index: number
+) {
+  // 先取出这个索引对应的节点
+  const oldChild = parentNode.children[index];
+  oldChild
+    ? parentNode.insertBefore(child, oldChild)
+    : parentNode.appendChild(child);
+}
+/**
+ * 新老孩子节点的dom diff
+ * @param parentNode
+ * @param oldChildren
+ * @param newChildren
+ */
+function diff(parentNode: HTMLElement, oldChildren, newChildren, diffQueue) {
+  const oldChildrenElementsMap = getChildrenElementsMap(oldChildren);
+  const newChildrenElementsMap = getNewChildrenElementsMap(
+    oldChildrenElementsMap,
+    newChildren
+  );
+  // 不需要移动节点的下标
+  let lastIndex = 0;
+  for (let i = 0; i < newChildren.length; i++) {
+    const newChildElement = newChildren[i];
+    if (newChildElement) {
+      const newKey = newChildElement.key || i.toString();
+      const oldChildElement = oldChildrenElementsMap[newKey];
+      if (newChildElement === oldChildElement) {
+        if (oldChildElement._mountIndex < lastIndex) {
+          // 需要移动
+          diffQueue.push({
+            parentNode, // 我要移除那个父节点下的元素
+            type: MOVE,
+            fromIndex: oldChildElement._mountIndex,
+            toIndex: i,
+          });
+        }
+        // 该节点复用了 更新lastIndex
+        lastIndex = Math.max(oldChildElement._mountIndex, lastIndex);
+      } else {
+        // 没有复用节点 插入 需要创建新的dom节点了
+        diffQueue.push({
+          parentNode,
+          type: INSERT,
+          toIndex: i,
+          dom: createDOM(newChildElement),
+        });
+      }
+      // 更新当前最新子元素在父元素children中的挂载索引
+      newChildElement._mountIndex = i;
+    } else {
+      // 节点不存在
+      // const newKey = i.toString()
+      // if(oldChildrenElementsMap[newKey])
+    }
+  }
+  for (const oldKey in oldChildrenElementsMap) {
+    if (!newChildrenElementsMap.hasOwnProperty(oldKey)) {
+      diffQueue.push({
+        parentNode,
+        type: REMOVE,
+        fromIndex: oldChildrenElementsMap[oldKey]._mountIndex,
+      });
+    }
+  }
+}
+
+/**
+ * 根据老的孩子数组 生成对应的map
+ * @param oldChildren
+ * @returns
+ */
+function getChildrenElementsMap(oldChildren) {
+  const oldChildrenElementsMap = {};
+  for (let i = 0; i < oldChildren.length; i++) {
+    const oldKey = oldChildren[i].key || i.toString();
+    oldChildrenElementsMap[oldKey] = oldChildren[i];
+  }
+  return oldChildrenElementsMap;
+}
+function getNewChildrenElementsMap(oldChildrenElementsMap, newChildren) {
+  const newChildrenElementsMap = {};
+  for (let i = 0; i < newChildren.length; i++) {
+    const newChildElement = newChildren[i];
+    if (newChildElement) {
+      const newKey = newChildElement.key || i.toString();
+      // 找到老的节点
+      const oldChildElement = oldChildrenElementsMap[newKey];
+      // 复用节点 key & type
+      if (canDeepCompare(oldChildElement, newChildElement)) {
+        // 复用节点 更新属性 递归更新该节点的子节点
+        updateElement(oldChildElement, newChildElement);
+        // 直接复用老节点了
+        newChildren[i] = oldChildElement;
+        // 从老的map中删除该节点
+        // delete oldChildrenElementsMap[newKey];
+      }
+      // 当前最新的节点（可能是复用的老节点了）
+      newChildrenElementsMap[newKey] = newChildren[i];
+    }
+  }
+  return newChildrenElementsMap;
+}
+function canDeepCompare(oldChildElement, newChildElement) {
+  if (!!oldChildElement && !!newChildElement) {
+    return oldChildElement.type === newChildElement.type;
+  }
+  return false;
+}
+/**
+ * 更新函数式组件
+ * @param oldElement
+ * @param newElement
+ */
+function updateFunctionComponent(oldElement, newElement) {
+  // 取出上次渲染的虚拟dom
+  const oldRenderElement = oldElement.renderElement;
+  const { type: FunctionComponent, props } = newElement;
+  const newRenderElement = FunctionComponent(props);
+  // dom diff
+  const currentRenderElement = compareTwoElements(
+    oldRenderElement,
+    newRenderElement
+  );
+  // 将渲染的虚拟dom重新挂载到函数式组件的虚拟dom上
+  newElement.renderElement = currentRenderElement;
+  return currentRenderElement;
+}
+/**
+ * 更新类组件
+ * @param oldElement
+ * @param newElement
+ */
+function updateClassComponent(oldElement, newElement) {
+  const { componentInstance } = oldElement;
+  const updater = componentInstance.$updater;
+  const nextProps = newElement.props; // 新的props
+  // 触发 更新组件
+  updater.emitUpdate(nextProps);
+}
+/**
+ * 更新dom的属性
+ * @param dom
+ * @param oldProps
+ * @param newProps
+ */
+function updateDOMProperties(dom, oldProps, newProps) {
+  patchProps(dom, oldProps, newProps);
 }
 
 /**
