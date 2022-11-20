@@ -86,7 +86,6 @@ function updateElement(oldElement, newElement) {
     // 更新 react组件实例的props
     oldElement.props = newElement.props;
   } else if (oldElement.$$typeof === FUNCTION_COMPONENT) {
-    debugger;
     // 函数式组件的更新
     updateFunctionComponent(oldElement, newElement);
   } else if (oldElement.$$typeof === CLASS_COMPONENT) {
@@ -110,7 +109,7 @@ const diffQueue: any[] = [];
 function updateChildrenElements(dom: HTMLElement, oldChildren, newChildren) {
   updateDepth++;
   // TODO diff 只是更新节点的属性和文本 不会处理节点的新增和删除
-  diff(dom, flatten(oldChildren), flatten(newChildren), diffQueue);
+  diff(dom, oldChildren, newChildren, diffQueue);
   updateDepth--;
   if (updateDepth === 0) {
     // 整个更新结束 diff完成 回到最上层了
@@ -312,6 +311,10 @@ function updateClassComponent(oldElement, newElement) {
   newElement.componentInstance = componentInstance;
   const updater = componentInstance.$updater;
   const nextProps = newElement.props; // 新的props
+  // TODO 更新 context
+  if (oldElement.type.contextType) {
+    componentInstance.context = oldElement.type.contextType.Provider.value;
+  }
   // TODO 组件将要接收新的属性对象
   componentInstance.componentWillReceiveProps?.(nextProps);
   if (newElement.type.getDerivedStateFromProps) {
@@ -373,6 +376,10 @@ function createClassComponentDOM(element: IReactElement) {
   const { type: Constructor, props, ref } = element;
   // 创建组件实例
   const componentInstance: Component = new Constructor(props);
+  // TODO  处理contentType
+  if (Constructor.contextType) {
+    componentInstance.context = Constructor.contextType.Provider.value;
+  }
   // TODO 处理ref
   if (ref) {
     ref.current = componentInstance;

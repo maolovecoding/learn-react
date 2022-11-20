@@ -1,3 +1,4 @@
+import { unstable_batchedUpdates } from "../react-dom";
 import { Updater } from "./Updater";
 import { compareTwoElements } from "./vdom";
 
@@ -25,7 +26,9 @@ export abstract class Component<T = any> {
   forceUpdate() {
     const { props, state, renderElement: oldRenderElement } = this;
     // 组件将要更新
-    this.componentWillUpdate?.();
+    unstable_batchedUpdates(() => {
+      this.componentWillUpdate?.();
+    });
     const { getSnapshotBeforeUpdate } = this;
     const extraArgs = getSnapshotBeforeUpdate?.();
     // 执行react更新操作
@@ -36,7 +39,9 @@ export abstract class Component<T = any> {
     );
     this.renderElement = currentRenderElement;
     // 组件更新完成的生命周期回调
-    this.componentDidUpdate?.(props, state, extraArgs);
+    unstable_batchedUpdates(() => {
+      this.componentDidUpdate?.(props, state, extraArgs);
+    });
   }
 
   /**
@@ -55,8 +60,10 @@ export abstract class Component<T = any> {
   componentDidMount?(): void;
   componentWillUnmount?(): void;
   componentWDidUnmount?(): void;
-  componentWillReceiveProps?(): void;
+  static componentWillReceiveProps?(): void;
   getSnapshotBeforeUpdate?(): any;
+  static contextType?: any;
+  context?: any;
 }
 /**
  *类组件和函数式组件编译后都是函数 通过 isReactComponent 区分是类组件还是函数组件

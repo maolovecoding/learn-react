@@ -5,6 +5,7 @@ import {
   FUNCTION_COMPONENT,
   TEXT,
 } from "./constants";
+import { flatten, onlyOne } from "./utils";
 import { ReactElement } from "./vdom";
 /**
  * react 中一个children的时候不是数组
@@ -29,9 +30,10 @@ function createElement(type, config: any = {}, ...children) {
     // 函数式组件
     $$typeof = FUNCTION_COMPONENT;
   }
+  children = flatten(children);
   props.children = children.map((item) => {
     // 子节点是react 元素类型 直接返回
-    if (typeof item === "object") {
+    if (typeof item === "object" || typeof item === "function") {
       return item;
     } else {
       // 是文本字符串 包装成 react 文本元素
@@ -43,10 +45,24 @@ function createElement(type, config: any = {}, ...children) {
 function createRef() {
   return { current: null };
 }
+
+function createContext(defaultValue) {
+  Provider.value = defaultValue;
+  function Provider(props) {
+    Provider.value = props.value;
+    return props.children;
+  }
+
+  function Consumer(props) {
+    return onlyOne(props.children)(Provider.value);
+  }
+  return { Provider, Consumer };
+}
 export default {
   createElement,
   Component,
   createRef,
+  createContext,
 };
 
-export { createElement, Component, createRef };
+export { createElement, Component, createRef, createContext };
