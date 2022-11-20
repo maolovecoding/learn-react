@@ -86,16 +86,14 @@ export class Updater {
  * @param state
  */
 function shouldUpdate(instance: Component, nextProps, nextState) {
+  // 是否更新
+  let shouldUnUpdate =
+    instance.shouldComponentUpdate &&
+    !instance.shouldComponentUpdate(nextProps, nextState);
   instance.props = nextProps;
   instance.state = nextState;
-  // 是否更新
-  if (
-    instance.shouldComponentUpdate &&
-    !instance.shouldComponentUpdate(nextProps, nextState)
-  ) {
-    // 不更新
-    return false;
-  }
+  // 不更新
+  if (shouldUnUpdate) return false;
   // 强制更新
   instance.forceUpdate();
 }

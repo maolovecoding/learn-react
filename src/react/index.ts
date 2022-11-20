@@ -40,10 +40,13 @@ function createElement(type, config: any = {}, ...children) {
   });
   return ReactElement($$typeof, type, key, ref, props);
 }
-
+function createRef() {
+  return { current: null };
+}
 export default {
   createElement,
   Component,
+  createRef,
 };
 
-export { createElement, Component };
+export { createElement, Component, createRef };

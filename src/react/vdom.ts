@@ -36,12 +36,19 @@ export function compareTwoElements(oldRenderElement, newRenderElement) {
   // 比较后的渲染结果
   let currentRenderElement = oldRenderElement;
   if (newRenderElement == null) {
+    // TODO 卸载类组件
+    if (oldRenderElement.$$typeof === CLASS_COMPONENT) {
+      oldRenderElement.componentInstance.componentWillUnmount?.();
+    }
     // 新的渲染结果是空 直接干掉老的dom节点
     currentDOM?.parentNode?.removeChild(currentDOM);
     currentDOM = null;
     oldRenderElement.dom = null;
   } else if (oldRenderElement.type !== newRenderElement.type) {
-    debugger;
+    // TODO 卸载类组件
+    if (oldRenderElement.$$typeof === CLASS_COMPONENT) {
+      oldRenderElement.componentInstance.componentWillUnmount?.();
+    }
     // 两次渲染的标签类型都不一样没办法复用dom元素 div -> span
     const newDOM = createDOM(newRenderElement);
     currentDOM?.parentNode?.replaceChild(newDOM, currentDOM);
@@ -79,6 +86,7 @@ function updateElement(oldElement, newElement) {
     // 更新 react组件实例的props
     oldElement.props = newElement.props;
   } else if (oldElement.$$typeof === FUNCTION_COMPONENT) {
+    debugger;
     // 函数式组件的更新
     updateFunctionComponent(oldElement, newElement);
   } else if (oldElement.$$typeof === CLASS_COMPONENT) {
@@ -102,7 +110,7 @@ const diffQueue: any[] = [];
 function updateChildrenElements(dom: HTMLElement, oldChildren, newChildren) {
   updateDepth++;
   // TODO diff 只是更新节点的属性和文本 不会处理节点的新增和删除
-  diff(dom, oldChildren, newChildren, diffQueue);
+  diff(dom, flatten(oldChildren), flatten(newChildren), diffQueue);
   updateDepth--;
   if (updateDepth === 0) {
     // 整个更新结束 diff完成 回到最上层了
@@ -213,8 +221,12 @@ function diff(parentNode: HTMLElement, oldChildren, newChildren, diffQueue) {
       newChildElement._mountIndex = i;
     } else {
       // 节点不存在
-      // const newKey = i.toString()
-      // if(oldChildrenElementsMap[newKey])
+      const newKey = i.toString();
+      debugger;
+      // TODO  组件卸载
+      oldChildrenElementsMap[
+        newKey
+      ]?.componentInstance.componentWillUnmount?.();
     }
   }
   for (const oldKey in oldChildrenElementsMap) {
@@ -295,9 +307,22 @@ function updateFunctionComponent(oldElement, newElement) {
  * @param newElement
  */
 function updateClassComponent(oldElement, newElement) {
+  debugger;
   const { componentInstance } = oldElement;
+  newElement.componentInstance = componentInstance;
   const updater = componentInstance.$updater;
   const nextProps = newElement.props; // 新的props
+  // TODO 组件将要接收新的属性对象
+  componentInstance.componentWillReceiveProps?.(nextProps);
+  if (newElement.type.getDerivedStateFromProps) {
+    const newState = newElement.type.getDerivedStateFromProps(
+      nextProps,
+      componentInstance.state
+    );
+    if (newState) {
+      componentInstance.state = { ...componentInstance.state, ...newState };
+    }
+  }
   // 触发 更新组件
   updater.emitUpdate(nextProps);
 }
@@ -345,9 +370,24 @@ export function createDOM(element: IReactElement | IReactElement[]) {
  */
 function createClassComponentDOM(element: IReactElement) {
   // type就是这个类了
-  const { type: Constructor, props } = element;
+  const { type: Constructor, props, ref } = element;
   // 创建组件实例
   const componentInstance: Component = new Constructor(props);
+  // TODO 处理ref
+  if (ref) {
+    ref.current = componentInstance;
+  }
+  // TODO 组件将要挂载
+  componentInstance.componentWillMount?.();
+  if (Constructor.getDerivedStateFromProps) {
+    const newState = Constructor.getDerivedStateFromProps(
+      props,
+      componentInstance.state
+    );
+    if (newState) {
+      componentInstance.state = { ...componentInstance.state, ...newState };
+    }
+  }
   // 类组件的虚拟dom（也是react元素） 记录当前渲染的组件实例对象
   element.componentInstance = componentInstance;
   // 拿到渲染的react元素
@@ -356,6 +396,8 @@ function createClassComponentDOM(element: IReactElement) {
   componentInstance.renderElement = renderElement;
   // 真实dom
   const newDom = createDOM(renderElement);
+  // TODO 组件挂载完成
+  componentInstance.componentDidMount?.();
   // 虚拟dom（react元素） 记录对应的真实dom
   renderElement.dom = newDom;
   return newDom;
@@ -382,13 +424,17 @@ function createFunctionComponentDOM(element: IReactElement) {
  * @returns
  */
 function createNativeDOM(element: IReactElement) {
-  const { type, props } = element;
+  const { type, props, ref } = element;
   // 1. 创建真实dom元素
   const dom = document.createElement(type);
   // 2. 处理子节点
   createDOMChildren(dom, element.props.children);
   // 3. 处理props
   setProps(dom, props);
+  // TODO 处理ref
+  if (ref) {
+    ref.current = dom;
+  }
   return dom;
 }
 /**

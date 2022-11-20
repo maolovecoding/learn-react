@@ -26,6 +26,8 @@ export abstract class Component<T = any> {
     const { props, state, renderElement: oldRenderElement } = this;
     // 组件将要更新
     this.componentWillUpdate?.();
+    const { getSnapshotBeforeUpdate } = this;
+    const extraArgs = getSnapshotBeforeUpdate?.();
     // 执行react更新操作
     const newRenderElement = this.render();
     const currentRenderElement = compareTwoElements(
@@ -34,7 +36,7 @@ export abstract class Component<T = any> {
     );
     this.renderElement = currentRenderElement;
     // 组件更新完成的生命周期回调
-    this.componentDidUpdate?.();
+    this.componentDidUpdate?.(props, state, extraArgs);
   }
 
   /**
@@ -48,7 +50,13 @@ export abstract class Component<T = any> {
   /**
    * 组件更新完毕
    */
-  componentDidUpdate?(): void;
+  componentDidUpdate?(nextProps, prevState, extraArgs): void;
+  componentWillMount?(): void;
+  componentDidMount?(): void;
+  componentWillUnmount?(): void;
+  componentWDidUnmount?(): void;
+  componentWillReceiveProps?(): void;
+  getSnapshotBeforeUpdate?(): any;
 }
 /**
  *类组件和函数式组件编译后都是函数 通过 isReactComponent 区分是类组件还是函数组件
