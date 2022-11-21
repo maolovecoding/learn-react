@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script>
+    const root = document.querySelector('#root')
+    const element = {
+      "type": "div",
+      "props": {
+        "id": "A1",
+        "children": [
+          {
+            "type": "div",
+            "props": {
+              "id": "B1",
+              "children": [
+                {
+                  "type": "div",
+                  "props": {
+                    "id": "C1"
+                  },
+                },
+                {
+                  "type": "div",
+                  "props": {
+                    "id": "C2"
+                  },
+                }
+              ]
+            },
+          },
+          {
+            "type": "div",
+            "props": {
+              "id": "B2"
+            },
+          }
+        ]
+      },
+    }
+    // 整个应用渲染的根节点
+    let workInProgressRoot = {
+      // fiber对应的DOM节点
+      stateNode: root,
+      // fiber的属性
+      props: {
+        children: [element]
+      }
+      // child return sibling
+    }
+    // 下一个工作单元
+    // fiber 其实就是一个普通的js对象
+    let nextUnitOfWork = workInProgressRoot
+    const PLACEMENT = 'PLACEMENT';// 副作用类型 插入节点
+    const workLoop = (didDeadline) => {
+      // 如又当前的工作单元，则执行且返回下一个工作单元  构建fiber树
+      while (didDeadline.timeRemaining() && nextUnitOfWork) {
+        nextUnitOfWork = performUnitOfWork(nextUnitOfWork)
+      }
+      // 没有任务了 commit
+      if (!nextUnitOfWork) {
+        commitRoot()
+      }
+    }
+    const commitRoot = () => {
+      let currentFiber = workInProgressRoot.firstEffect // C1
+      console.log(currentFiber)
+      while (currentFiber) {
+        console.log('commitRoot----', currentFiber.props.id)
+        if (currentFiber.effectTag === PLACEMENT) {
+          // 插入
+          currentFiber.return.stateNode.appendChild(currentFiber.stateNode)
+        }
+        currentFiber = currentFiber.nextEffect
+      }
+      workInProgressRoot = null
+    }
+    /**
+     * beginWork 1.创建此fiber的真实dom，通过虚拟dom创建fiber树结构
+     * @param workingInProgressFiber 参数是正在工作的fiber节点
+     */
+    const performUnitOfWork = (workingInProgressFiber) => {
+      // 1. 创建真实DOM 但是并没有挂载 
+      // 2. 创建fiber子树
+      beginWork(workingInProgressFiber)
+      // 有子节点 返回子fiber
+      if (workingInProgressFiber.child) {
+        return workingInProgressFiber.child
+      }
+      // 没有子节点 返回弟弟节点
+      while (workingInProgressFiber) {
+        // 来到这里 表示节点遍历完成(因为没有子节点了) 处理自己 然后返回父节点
+        completeUnitOfWork(workingInProgressFiber)
+        if (workingInProgressFiber.sibling) {
+          return workingInProgressFiber.sibling
+        }
+        // 指向父亲
+        workingInProgressFiber = workingInProgressFiber.return
+      }
+    }
+    const beginWork = (workingInProgressFiber) => {
+      console.log('beginWork---', workingInProgressFiber.props.id)
+      if (!workingInProgressFiber.stateNode) {
+        // 没有该节点 创建
+        workingInProgressFiber.stateNode = document.createElement(workingInProgressFiber.type)
+        for (const key in workingInProgressFiber.props) {
+          if (key !== 'children') {
+            // 没有考虑 style等
+            workingInProgressFiber.stateNode[key] = workingInProgressFiber.props[key]
+          }
+        }
+      }
+      
+      // 在beginWork里面是不会挂载的
+      // 创建子fiber
+      let previousFiber
+      // children 虚拟dom的数组
+      workingInProgressFiber.props.children?.forEach((child, index) => {
+        const childFiber = {
+          type: child.type,
+          props: child.props,
+          return: workingInProgressFiber,
+          effectTag: PLACEMENT, // 副作用标记 表示这个节点会如何操作
+          nextEffect: null
+        }
+        // 是大儿子节点 （第一个子节点）
+        if (index === 0) {
+          workingInProgressFiber.child = childFiber
+        } else {
+          previousFiber.sibling = childFiber
+        }
+        previousFiber = childFiber
+      })
+    }
+    const completeUnitOfWork = (workingInProgressFiber) => {
+      console.log('completeUnitOfWork---', workingInProgressFiber.props.id)
+      // 构建副作用链 effectList 只有那些有副作用的节点 才会参与更新
+      // 拿到父节点
+      const returnFiber = workingInProgressFiber.return // A1
+      if (returnFiber) {
+        // 父节点没有副作用指针没有值
+        if (!returnFiber.firstEffect) {
+          // 直接用子节点的覆盖
+          returnFiber.firstEffect = workingInProgressFiber.firstEffect
+        }
+        // 如果父节点有指向最后一个副作用节点的指针 则肯定是有firstEffect的
+        if (workingInProgressFiber.lastEffect) {
+          // 把当前最后一个节点的下一个节点指向子节点的起始节点
+          if (returnFiber.lastEffect) {
+            returnFiber.lastEffect.nextEffect = workingInProgressFiber.firstEffect
+          }
+          returnFiber.lastEffect = workingInProgressFiber.lastEffect
+        }
+        // 处理节点自己 将自己挂载到后面
+        if (workingInProgressFiber.effectTag) {
+          if (returnFiber.lastEffect) {
+            returnFiber.lastEffect.nextEffect = workingInProgressFiber
+          } else {
+            returnFiber.firstEffect = workingInProgressFiber
+          }
+          returnFiber.lastEffect = workingInProgressFiber
+        }
+      }
+    }
+    requestIdleCallback(workLoop)
+  </script>
+</body>
+
+</html>
