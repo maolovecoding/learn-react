@@ -6,3 +6,9 @@ export const CLASS_COMPONENT = Symbol.for("react.classComponent"); // react 元�
 export const MOVE = "MOVE";
 export const REMOVE = "REMOVE";
 export const INSERT = "INSERT";
+
+export const TAG_ROOT = Symbol.for("TAG_ROOT"); // react应用需要一个根Fiber
+export const TAG_HOST = Symbol.for("TAG_HOST"); // 原生节点 span div
+
+export const ELEMENT_TEXT = Symbol.for("ELEMENT_TEXT"); // 文本节点
+export const TAG_TEXT = Symbol.for("TAG_TEXT"); // 文本节点 fiber tag
